@@ -6,9 +6,7 @@ You'll start a Postgres database, load sample data into it, connect ReadySet, ca
 
 ## Before you begin
 
-- Make sure you have [Docker](https://docs.docker.com/engine/install/) installed and running.
-
-- Make sure you have the [`psql` client](https://www.postgresql.org/docs/current/app-psql.html) installed.
+Make sure you have [Docker](https://docs.docker.com/engine/install/) installed and running.
 
 ## Step 1. Start the database
 
@@ -46,11 +44,41 @@ ReadySet sits between your database and application, so in this step, you'll sta
 
 In this step, you'll load two sample tables from the [IMDb dataset](https://www.imdb.com/interfaces/) so you have some data to query.
 
-1. Using the `psql` client, create the schema for 2 tables, `title_basics` and `title_ratings`:
+1. Create a second container for downloading sample data and running the `psql` client:
+
+    ``` sh
+    docker run -dit \
+    --name=psql \
+    postgres:14 \
+    bash
+    ```
+
+2. Get into the container and install some dependencies for downloading the sample data:
+
+    ``` sh
+    docker exec -it psql bash
+    ```
+
+    ``` sh
+    apt-get update
+    ```
+
+    ``` sh
+    apt-get -y install curl unzip
+    ```
+
+3. Download CSV files containing data for these tables from the [IMDb dataset](https://www.imdb.com/interfaces/):
+
+    ``` sh
+    curl -O https://raw.githubusercontent.com/readysettech/docs/main/docs/assets/quickstart_sample_data.zip \
+    && unzip quickstart_sample_data.zip
+    ```
+
+4. Use the `psql` client to create the schema for 2 tables, `title_basics` and `title_ratings`:
 
     ``` sh
     PGPASSWORD=readyset psql \
-    --host=127.0.0.1 \
+    --host=host.docker.internal \
     --port=5432 \
     --username=postgres \
     --dbname=imdb \
@@ -69,7 +97,7 @@ In this step, you'll load two sample tables from the [IMDb dataset](https://www.
 
     ``` sh
     PGPASSWORD=readyset psql \
-    --host=127.0.0.1 \
+    --host=host.docker.internal \
     --port=5432 \
     --username=postgres \
     --dbname=imdb \
@@ -80,18 +108,11 @@ In this step, you'll load two sample tables from the [IMDb dataset](https://www.
         );"
     ```
 
-2. Download CSV files containing data for these tables from the [IMDb dataset](https://www.imdb.com/interfaces/):
-
-    ``` sh
-    curl -O https://raw.githubusercontent.com/readysettech/docs/main/docs/assets/quickstart_sample_data.zip \
-    && unzip quickstart_sample_data.zip
-    ```
-
-3. Load the data into each table:
+5. Load the data into each table:
 
     ``` sh
     PGPASSWORD=readyset psql \
-    --host=127.0.0.1 \
+    --host=host.docker.internal \
     --port=5432 \
     --username=postgres \
     --dbname=imdb \
@@ -102,7 +123,7 @@ In this step, you'll load two sample tables from the [IMDb dataset](https://www.
 
     ``` sh
     PGPASSWORD=readyset psql \
-    --host=127.0.0.1 \
+    --host=host.docker.internal \
     --port=5432 \
     --username=postgres \
     --dbname=imdb \
@@ -111,13 +132,13 @@ In this step, you'll load two sample tables from the [IMDb dataset](https://www.
         with DELIMITER E'\t'"
     ```
 
-    These commands load 5159701 rows into `title_basics` and 1246402 rows into `title_ratings`.
+    These commands will take a few minutes, as they load 5159701 rows into `title_basics` and 1246402 rows into `title_ratings`.
 
-4. Open the `psql` shell and get a sense of the data in each table:
+6. Open the `psql` shell and get a sense of the data in each table:
 
     ``` sh
     PGPASSWORD=readyset psql \
-    --host=127.0.0.1 \
+    --host=host.docker.internal \
     --port=5432 \
     --username=postgres \
     --dbname=imdb
@@ -140,17 +161,23 @@ In this step, you'll load two sample tables from the [IMDb dataset](https://www.
     (1 row)
     ```
 
-5. Exit the `psql` shell:
+7. Exit the `psql` shell:
 
     ``` sql
     \q
+    ```
+
+8. Exit the container:
+
+    ``` sh
+    exit
     ```
 
 ## Step 3. Connect ReadySet
 
 Now that you have a live database with sample data, you'll connect ReadySet to the database and watch it take a snapshot of your tables. This snapshot will be the basis for ReadySet to cache query results.
 
-1. Create a second container and start ReadySet inside it, connecting ReadySet to your Postgres database via the connection string in `--upstream-db-url`:
+1. Create a third container and start ReadySet inside it, connecting ReadySet to your Postgres database via the connection string in `--upstream-db-url`:
 
     ``` sh
     docker run -d \
@@ -204,11 +231,15 @@ Now that you have a live database with sample data, you'll connect ReadySet to t
 
 With snapshotting finished, ReadySet is ready for caching, so in this step, you'll run some queries, check if ReadySet supports them, and then cache them.   
 
-1. Connect the Postgres client to ReadySet instead of the database:
+1. Get back into the container with the Postgres client and connect it to ReadySet instead of the database:
+
+    ``` sh
+    docker exec -it psql bash
+    ```
 
     ``` sh
     PGPASSWORD=readyset psql \
-    --host=127.0.0.1 \
+    --host=host.docker.internal \
     --port=5433 \
     --username=postgres \
     --dbname=imdb
@@ -333,6 +364,12 @@ With snapshotting finished, ReadySet is ready for caching, so in this step, you'
 
     ``` sql
     \q
+    ```
+
+10. Exit the container:
+
+    ``` sh
+    exit
     ```
 
 ## Step 5. Check latencies
@@ -465,11 +502,17 @@ In this step, you'll use a simple Python application to run your queries against
 
 One of ReadySet's most important features is its ability to keep your cache up-to-date as writes are applied to the upstream database. In this step, you'll see this in action.
 
-1. Using the `psql` client, insert new rows that will change the count returned by your first `JOIN` query:
+1. Get back into the container with the Postgres client:
+
+    ``` sh
+    docker exec -it psql bash
+    ```
+
+2. Insert new rows that will change the count returned by your first `JOIN` query:
 
     ``` sh
     PGPASSWORD=readyset psql \
-    --host=127.0.0.1 \
+    --host=host.docker.internal \
     --port=5432 \
     --username=postgres \
     --dbname=imdb \
@@ -477,6 +520,12 @@ One of ReadySet's most important features is its ability to keep your cache up-t
           VALUES ('tt9999998', 'movie', 'The ReadySet movie', 'The ReadySet movie', false, 2000, 0, 'Adventure');
         INSERT INTO title_ratings (tconst, averagerating, numvotes)
           VALUES ('tt9999998', 10, 1000000);"
+    ```
+
+3. Exit the container:
+
+    ``` sh
+    exit
     ```
 
 4. Run the `JOIN` against ReadySet again:
@@ -505,12 +554,12 @@ One of ReadySet's most important features is its ability to keep your cache up-t
 
 ## Step 7. Tear down
 
-When you are done testing your local deployment, use the `docker stop` and `docker rm` commands to stop and remove the containers and volumes for Postgres and ReadySet:
+When you are done testing your local deployment, use the `docker stop` and `docker rm` commands to stop and remove the containers and volumes for ReadySet, Postgres, and the Postgres client:
 
 ``` sh
-docker stop readyset postgres
+docker stop readyset postgres psql
 ```
 
 ``` sh
-docker rm -v readyset postgres
+docker rm -v readyset postgres psql
 ```
